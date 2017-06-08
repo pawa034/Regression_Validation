@@ -1,0 +1,177 @@
+#lodaing the data :-
+data = read.csv("D:/prd_data.csv")
+#running the model:-
+#lets see some correlation among data points
+library(corrplot)
+M = cor(data)
+corrplot(M)
+
+# we now remove variables with high correlation
+dat1 = subset(data,select=-c(fd_rate,fs_rate))
+model = glm(status~.,data=dat1,family=binomial(logit))
+
+# #lets check model summary()
+summary(model)
+
+
+table(dat1$status)
+M1 = cor(dat1)
+corrplot(M1)
+
+#predictions:-
+data$prob = predict(model,data=dat1,type="response")
+data$pred = ifelse(data$prob>0.5,1,0)
+library(caret)
+
+#Metrics:-
+#1.confusion Matrix:-
+confusionMatrix(data$pred,data$status)
+#2 AUC / ROC:-
+library(pROC)
+plot(roc(data$status,data$prob, direction="<"),
+     col="yellow", lwd=3, main="AUC_CURVE")
+roc(data$status,data$prob, direction="<")
+
+#AUC_CODE VERSION_2:-
+library('ROCR')
+p <- predict(model, newdata=dat1, type="response")
+pr <- prediction(p, dat1$status)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+#Cocnrodance_Discordance_code:-
+
+###########################################################
+bruteforce<-function(model){
+  # Get all actual observations and their fitted values into a frame
+  fitted<-data.frame(cbind(model$y,model$fitted.values))
+  colnames(fitted)<-c('respvar','score')
+  # Subset only ones
+  ones<-fitted[fitted[,1]==1,]
+  # Subset only zeros
+  zeros<-fitted[fitted[,1]==0,]
+  
+  # Initialise all the values
+  pairs_tested<-0
+  conc<-0
+  disc<-0
+  ties<-0
+  
+  # Get the values in a for-loop
+  for(i in 1:nrow(ones))
+  {
+    for(j in 1:nrow(zeros))
+    {
+      pairs_tested<-pairs_tested+1
+      if(ones[i,2]>zeros[j,2]) {conc<-conc+1}
+      else if(ones[i,2]==zeros[j,2]){ties<-ties+1}
+      else {disc<-disc+1}
+    }
+  }
+  # Calculate concordance, discordance and ties
+  concordance<-conc/pairs_tested
+  discordance<-disc/pairs_tested
+  ties_perc<-ties/pairs_tested
+  return(list("Concordance"=concordance,
+              "Discordance"=discordance,
+              "Tied"=ties_perc,
+              "Pairs"=pairs_tested))
+}
+
+
+# Let us see concordance values:-
+
+
+
+# LIFT CURVE:-
+#Now lets plot the lift chart for further insights in the data:-
+
+predtrain=prediction(data$prob,data$status)
+lifttrain=performance(predtrain, "lift", "rpp")
+plot(lifttrain, col="green", lty=1, xlab="Caseload (%)", add=FALSE,main="Lift Chart")
+par(new=TRUE) 
+
+#Decile Table:-
+lift <- function(depvar, predcol, groups=10) {
+ 
+  library(dplyr)
+  if(is.factor(depvar)) depvar <- as.integer(as.character(depvar))
+  if(is.factor(predcol)) predcol <- as.integer(as.character(predcol))
+  helper = data.frame(cbind(depvar, predcol))
+  helper[,"bucket"] = ntile(-helper[,"predcol"], groups)
+  gaintable = helper %>% group_by(bucket)  %>%
+    summarise_at(vars(depvar), funs(total = n(),
+                                    totalresp=sum(., na.rm = TRUE))) %>%
+    mutate(Cumresp = cumsum(totalresp),
+           Gain=Cumresp/sum(totalresp)*100,
+           Cumlift=Gain/(bucket*(100/groups)))
+  return(gaintable)
+}
+
+dt = lift(data$status , data$pred, groups = 10)
+graphics::plot(dt$bucket, dt$Cumlift, type="l", ylab="Cumulative lift", xlab="Bucket")
+dt
+
+#KS_STATISTICS:-
+KS <- function(pred,depvar){
+  require("ROCR")
+  p   <- prediction(as.numeric(pred),depvar)
+  perf <- performance(p, "tpr", "fpr")
+  ks <- max(attr(perf, "y.values")[[1]] - (attr(perf, "x.values")[[1]]))
+  return(ks)
+}
+
+KS(data$prob,data$status)
+
+
+#Now lets see how far are predicted points from actual values:-
+
+
+
+
+
+
+
+#LIFT_CHART OWN CODE:-
+#1 rankorder the prob in 1 table:-
+lf = subset(data,select=c(status,prob))
+library(dplyr)
+lf1=arrange(lf,desc(prob))
+
+library(gains)
+gains.cross <- gains(actual=data$status,
+                     predicted=data$prob,
+                     groups=5)
+#SOME MORE METRICS:-
+
+library("MLmetrics")
+
+#AUC CURVE:-
+AUC(data$pred,data$status)
+
+#COnfusion_matrix:-
+ConfusionMatrix(data$pred,data$status)
+
+#F1_score:-
+F1_Score(data$pred,data$status)
+
+#Gini
+Gini(data$prob,data$status)
+
+#KS_stats:-
+KS_Stat(data$prob,data$status)
+
+#Area_under lift chart:-
+LiftAUC(data$prob,data$status)
+
+
+#LOG_LOSS/CROSS_ENTROPY LOSS
+LogLoss(data$prob,data$status)
+
+
+
+
+
